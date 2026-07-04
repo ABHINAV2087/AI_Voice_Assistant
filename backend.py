@@ -135,6 +135,99 @@ def list_appointments(request: ListAppointmentRequest, db: Session = Depends(get
     return booked_appointments
 
 
+class DashboardStatsResponse(BaseModel):
+    total_bookings: int
+    active_bookings: int
+    canceled_bookings: int
+    cancellation_rate: float
+    reasons: dict[str, int]
+    hourly_distribution: dict[int, int]
+    daily_distribution: dict[str, int]
+
+
+@app.get("/dashboard/stats", response_model=DashboardStatsResponse)
+def get_dashboard_stats(db: Session = Depends(get_db)) -> DashboardStatsResponse:
+    result = db.execute(select(Appointment))
+    appointments = result.scalars().all()
+    
+    total = len(appointments)
+    active = sum(1 for a in appointments if not a.canceled)
+    canceled = sum(1 for a in appointments if a.canceled)
+    rate = (canceled / total * 100) if total > 0 else 0.0
+
+    reasons: dict[str, int] = {}
+    for a in appointments:
+        r = (a.reason or "").strip() or "General Consultation"
+        reasons[r] = reasons.get(r, 0) + 1
+
+    hourly: dict[int, int] = {}
+    for a in appointments:
+        h = a.start_time.hour
+        hourly[h] = hourly.get(h, 0) + 1
+
+    daily: dict[str, int] = {}
+    for a in appointments:
+        d = a.start_time.date().isoformat()
+        daily[d] = daily.get(d, 0) + 1
+
+    return DashboardStatsResponse(
+        total_bookings=total,
+        active_bookings=active,
+        canceled_bookings=canceled,
+        cancellation_rate=round(rate, 2),
+        reasons=reasons,
+        hourly_distribution=hourly,
+        daily_distribution=daily,
+    )
+
+
+@app.get("/dashboard/appointments", response_model=list[AppointmentResponse])
+def get_dashboard_appointments(
+    patient_name: str | None = None,
+    start_date: dt.date | None = None,
+    end_date: dt.date | None = None,
+    include_canceled: bool = True,
+    db: Session = Depends(get_db)
+) -> list[AppointmentResponse]:
+    stmt = select(Appointment)
+    if not include_canceled:
+        stmt = stmt.where(Appointment.canceled == False)
+    if patient_name:
+        stmt = stmt.where(Appointment.patient_name.ilike(f"%{patient_name.strip()}%"))
+    if start_date:
+        start_dt = dt.datetime.combine(start_date, dt.time.min)
+        stmt = stmt.where(Appointment.start_time >= start_dt)
+    if end_date:
+        end_dt = dt.datetime.combine(end_date, dt.time.max)
+        stmt = stmt.where(Appointment.start_time <= end_dt)
+    
+    stmt = stmt.order_by(Appointment.start_time.asc())
+    result = db.execute(stmt)
+    
+    return [
+        AppointmentResponse(
+            id=a.id,
+            patient_name=a.patient_name,
+            reason=a.reason,
+            start_time=a.start_time,
+            canceled=a.canceled,
+            created_at=a.created_at,
+        )
+        for a in result.scalars().all()
+    ]
+
+
+@app.post("/dashboard/cancel_appointment/{appointment_id}")
+def cancel_appointment_by_id(appointment_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
+    appointment = db.execute(select(Appointment).where(Appointment.id == appointment_id)).scalar_one_or_none()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    
+    appointment.canceled = True
+    db.commit()
+    return {"status": "success", "message": f"Appointment {appointment_id} canceled successfully"}
+
+
 if __name__ == "__main__":
     import uvicorn
 
