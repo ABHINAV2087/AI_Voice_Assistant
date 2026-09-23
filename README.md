@@ -2,7 +2,9 @@
 
 MediVoice is a conversational backend that lets patients book, cancel, and check appointments by voice. Built with FastAPI for the API layer, SQLAlchemy for persistence, and Streamlit for a quick manual-testing UI. Data is stored in PostgreSQL. It's meant to sit behind a VAPI assistant, translating natural-language requests into appointment records.
 
+# DEMO <a href="https://www.youtube.com/watch?v=y-Q-0y6Lg8E"><img src="https://img.icons8.com/color/48/youtube-play.png" width="25" height="25"></a>
 
+[![Watch the Demo](https://i3.ytimg.com/vi/y-Q-0y6Lg8E/maxresdefault.jpg)](https://www.youtube.com/watch?v=y-Q-0y6Lg8E)
 
 ## ✨ What it does
 
